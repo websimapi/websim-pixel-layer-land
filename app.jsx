@@ -5,7 +5,7 @@ import { WebsimSocket, useQuery } from "@websim/use-query";
 const room = new WebsimSocket();
 const PIXEL_SIZE = 16;
 const PLAYER_IMG_SRC = "player.png";
-const PLAYER_SPEED = 2;
+const MOVE_INTERVAL = 500;
 const getRandomColor = () => {
   return "hsl(" + 360 * Math.random() + "," + (25 + 70 * Math.random()) + "%," + (85 + 10 * Math.random()) + "%)";
 };
@@ -77,6 +77,7 @@ function App() {
   const myLayerRef = useRef({ pixels: {} });
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const analogInput = useRef({ x: 0, y: 0 });
+  const lastMoveTime = useRef(0);
   const { data: allLayers, loading } = useQuery(
     room.query("SELECT id, pixels, last_updated, user_id FROM public.user_layers ORDER BY last_updated DESC")
   );
@@ -138,6 +139,8 @@ function App() {
     }
     if (playerImage.current && playerImage.current.complete) {
       ctx.drawImage(playerImage.current, player.x, player.y, PIXEL_SIZE, PIXEL_SIZE);
+    } else if (playerImage.current) {
+      playerImage.current.onload = () => draw();
     }
   }, [allLayers, currentUser, myLayer, player]);
   const paintPixel = useCallback((gridX, gridY) => {
@@ -153,24 +156,33 @@ function App() {
   useEffect(() => {
     let animationFrameId;
     const gameLoop = () => {
-      let dx = analogInput.current.x;
-      let dy = analogInput.current.y;
-      if (keysPressed.current["w"] || keysPressed.current["arrowup"]) dy -= 1;
-      if (keysPressed.current["s"] || keysPressed.current["arrowdown"]) dy += 1;
-      if (keysPressed.current["a"] || keysPressed.current["arrowleft"]) dx -= 1;
-      if (keysPressed.current["d"] || keysPressed.current["arrowright"]) dx += 1;
-      const magnitude = Math.sqrt(dx * dx + dy * dy);
-      if (magnitude > 1) {
-        dx /= magnitude;
-        dy /= magnitude;
-      }
-      if (dx !== 0 || dy !== 0) {
-        setPlayer((p) => {
-          const canvas = canvasRef.current;
-          const newX = Math.max(0, Math.min(p.x + dx * PLAYER_SPEED, canvas.width - PIXEL_SIZE));
-          const newY = Math.max(0, Math.min(p.y + dy * PLAYER_SPEED, canvas.height - PIXEL_SIZE));
-          return { ...p, x: newX, y: newY };
-        });
+      const now = Date.now();
+      if (now - lastMoveTime.current > MOVE_INTERVAL) {
+        let dx = 0;
+        let dy = 0;
+        const analogX = analogInput.current.x;
+        const analogY = analogInput.current.y;
+        if (Math.abs(analogX) > 0.5 || Math.abs(analogY) > 0.5) {
+          if (Math.abs(analogX) > Math.abs(analogY)) {
+            dx = Math.sign(analogX);
+          } else {
+            dy = Math.sign(analogY);
+          }
+        } else {
+          if (keysPressed.current["w"] || keysPressed.current["arrowup"]) dy = -1;
+          else if (keysPressed.current["s"] || keysPressed.current["arrowdown"]) dy = 1;
+          else if (keysPressed.current["a"] || keysPressed.current["arrowleft"]) dx = -1;
+          else if (keysPressed.current["d"] || keysPressed.current["arrowright"]) dx = 1;
+        }
+        if (dx !== 0 || dy !== 0) {
+          setPlayer((p) => {
+            const canvas = canvasRef.current;
+            const newX = Math.max(0, Math.min(p.x + dx * PIXEL_SIZE, canvas.width - PIXEL_SIZE));
+            const newY = Math.max(0, Math.min(p.y + dy * PIXEL_SIZE, canvas.height - PIXEL_SIZE));
+            return { ...p, x: newX, y: newY };
+          });
+          lastMoveTime.current = now;
+        }
       }
       const gridX = Math.floor((player.x + PIXEL_SIZE / 2) / PIXEL_SIZE);
       const gridY = Math.floor((player.y + PIXEL_SIZE / 2) / PIXEL_SIZE);
@@ -206,12 +218,12 @@ function App() {
   return /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col items-center justify-center w-full h-full p-4", children: [
     /* @__PURE__ */ jsxDEV("h1", { className: "text-3xl font-bold mb-4", children: "Pixel Layer Land" }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 251,
+      lineNumber: 264,
       columnNumber: 13
     }, this),
     loading && !allLayers && /* @__PURE__ */ jsxDEV("p", { children: "Loading World..." }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 252,
+      lineNumber: 265,
       columnNumber: 39
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -225,7 +237,7 @@ function App() {
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 253,
+        lineNumber: 266,
         columnNumber: 13
       },
       this
@@ -233,45 +245,45 @@ function App() {
     /* @__PURE__ */ jsxDEV("div", { className: "mt-4 text-center", children: [
       /* @__PURE__ */ jsxDEV("p", { children: "Use WASD/Arrow keys or the analog stick to move." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 259,
+        lineNumber: 272,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("p", { children: "As you move, you paint your layer with your color." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 260,
+        lineNumber: 273,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center mt-2", children: [
         "Your current color: ",
         /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 ml-2 border border-white", style: { backgroundColor: player.color } }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 262,
+          lineNumber: 275,
           columnNumber: 41
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 261,
+        lineNumber: 274,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 258,
+      lineNumber: 271,
       columnNumber: 13
     }, this),
     isTouchDevice && /* @__PURE__ */ jsxDEV(AnalogStick, { onMove: handleAnalogMove }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 265,
+      lineNumber: 278,
       columnNumber: 31
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 250,
+    lineNumber: 263,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 271,
+  lineNumber: 284,
   columnNumber: 13
 }));

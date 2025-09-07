@@ -323,18 +323,23 @@ function App() {
       if (currentUser && Object.keys(pixelUpdateQueue.current).length > 0) {
         const pixelsToUpdate = { ...pixelUpdateQueue.current };
         pixelUpdateQueue.current = {};
-        const myLayerFromDB = allLayers?.find((l) => l.id === currentUser.id);
-        const basePixels = myLayerFromDB?.pixels || {};
-        const newPixels = { ...basePixels, ...pixelsToUpdate };
-        await room.collection("user_layers").upsert({
-          id: currentUser.id,
-          pixels: newPixels,
-          last_updated: (/* @__PURE__ */ new Date()).toISOString()
-        });
+        try {
+          const myLayerFromDB = await room.collection("user_layers").get(currentUser.id);
+          const basePixels = myLayerFromDB?.pixels || {};
+          const newPixels = { ...basePixels, ...pixelsToUpdate };
+          await room.collection("user_layers").upsert({
+            id: currentUser.id,
+            pixels: newPixels,
+            last_updated: (/* @__PURE__ */ new Date()).toISOString()
+          });
+        } catch (error) {
+          console.error("Failed to update user layer:", error);
+          pixelUpdateQueue.current = { ...pixelsToUpdate, ...pixelUpdateQueue.current };
+        }
       }
     }, 1e3);
     return () => clearInterval(interval);
-  }, [currentUser, allLayers]);
+  }, [currentUser]);
   const handleAnalogMove = useCallback((vec) => {
     analogInput.current = vec;
   }, []);
@@ -367,12 +372,12 @@ function App() {
   return /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col items-center justify-center w-full h-full p-4", children: [
     /* @__PURE__ */ jsxDEV("h1", { className: "text-3xl font-bold mb-4", children: "Pixel Layer Land" }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 465,
+      lineNumber: 472,
       columnNumber: 13
     }, this),
     loading && !allLayers && /* @__PURE__ */ jsxDEV("p", { children: "Loading World..." }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 466,
+      lineNumber: 473,
       columnNumber: 39
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -387,7 +392,7 @@ function App() {
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 467,
+        lineNumber: 474,
         columnNumber: 13
       },
       this
@@ -395,12 +400,12 @@ function App() {
     /* @__PURE__ */ jsxDEV("div", { className: "mt-4 text-center", children: [
       /* @__PURE__ */ jsxDEV("p", { children: "Click to move, or use WASD/Arrow keys or the analog stick." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 474,
+        lineNumber: 481,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("p", { children: "As you move, you paint your layer. Paint over other colors to unlock new ones!" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 475,
+        lineNumber: 482,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center mt-2", id: "color-palette", children: unlockedColors.map((color) => /* @__PURE__ */ jsxDEV(
@@ -415,34 +420,34 @@ function App() {
         false,
         {
           fileName: "<stdin>",
-          lineNumber: 478,
+          lineNumber: 485,
           columnNumber: 25
         },
         this
       )) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 476,
+        lineNumber: 483,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 473,
+      lineNumber: 480,
       columnNumber: 13
     }, this),
     isTouchDevice && /* @__PURE__ */ jsxDEV(AnalogStick, { onMove: handleAnalogMove }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 488,
+      lineNumber: 495,
       columnNumber: 31
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 464,
+    lineNumber: 471,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 494,
+  lineNumber: 501,
   columnNumber: 13
 }));

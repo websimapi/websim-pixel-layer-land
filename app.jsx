@@ -5,7 +5,7 @@ import { WebsimSocket, useQuery } from "@websim/use-query";
 const room = new WebsimSocket();
 const PIXEL_SIZE = 16;
 const PLAYER_IMG_SRC = "player.png";
-const MOVE_INTERVAL = 500;
+const MOVE_INTERVAL = 50;
 const getRandomColor = () => {
   return "hsl(" + 360 * Math.random() + "," + (25 + 70 * Math.random()) + "%," + (85 + 10 * Math.random()) + "%)";
 };
@@ -69,28 +69,56 @@ const AnalogStick = ({ onMove }) => {
 function App() {
   const canvasRef = useRef(null);
   const [currentUser, setCurrentUser] = useState(null);
-  const [player, setPlayer] = useState({ x: 10 * PIXEL_SIZE, y: 10 * PIXEL_SIZE, color: getRandomColor() });
-  const playerImage = useRef(null);
+  const playerImages = useRef({});
   const keysPressed = useRef({});
-  const lastPaintedCell = useRef(null);
   const pixelUpdateQueue = useRef({});
-  const myLayerRef = useRef({ pixels: {} });
+  const [livePixels, setLivePixels] = useState({});
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const analogInput = useRef({ x: 0, y: 0 });
   const lastMoveTime = useRef(0);
+  const [playerState, setPlayerState] = useState({
+    x: 10 * PIXEL_SIZE,
+    y: 10 * PIXEL_SIZE,
+    color: getRandomColor()
+  });
+  const [presence, setPresence] = useState({});
   const { data: allLayers, loading } = useQuery(
-    room.query("SELECT id, pixels, last_updated, user_id FROM public.user_layers ORDER BY last_updated DESC")
+    room.query("SELECT id, pixels, last_updated FROM public.user_layers ORDER BY last_updated ASC")
   );
-  const [myLayer, setMyLayer] = useState({ pixels: {} });
   useEffect(() => {
-    myLayerRef.current = myLayer;
-  }, [myLayer]);
-  useEffect(() => {
+    const init = async () => {
+      const user = await window.websim.getCurrentUser();
+      setCurrentUser(user);
+      await room.initialize();
+      room.updatePresence({
+        ...playerState,
+        userId: user.id,
+        username: user.username
+      });
+      room.onmessage = (event) => {
+        const { data, fromClientId } = event;
+        if (data.type === "paint") {
+          const painterPresence = room.presence[fromClientId];
+          if (painterPresence && painterPresence.userId) {
+            setLivePixels((prev) => ({
+              ...prev,
+              [painterPresence.userId]: {
+                ...prev[painterPresence.userId],
+                [`${data.x},${data.y}`]: data.color
+              }
+            }));
+          }
+        }
+      };
+      room.subscribePresence((currentPresence) => {
+        setPresence({ ...currentPresence });
+      });
+    };
+    init();
     setIsTouchDevice("ontouchstart" in window || navigator.maxTouchPoints > 0);
-    window.websim.getCurrentUser().then(setCurrentUser);
     const img = new Image();
     img.src = PLAYER_IMG_SRC;
-    playerImage.current = img;
+    playerImages.current["default"] = img;
     const handleKeyDown = (e) => {
       keysPressed.current[e.key.toLowerCase()] = true;
     };
@@ -104,16 +132,6 @@ function App() {
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
-  useEffect(() => {
-    if (currentUser && allLayers) {
-      const foundMyLayer = allLayers.find((layer) => layer.id === currentUser.id);
-      if (foundMyLayer) {
-        setMyLayer(foundMyLayer);
-      } else {
-        setMyLayer({ id: currentUser.id, pixels: {} });
-      }
-    }
-  }, [allLayers, currentUser]);
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !allLayers || !currentUser) return;
@@ -121,88 +139,119 @@ function App() {
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-    for (let i = allLayers.length - 1; i >= 0; i--) {
-      const layer = allLayers[i];
-      if (layer.id === currentUser.id) continue;
-      const pixels = layer.pixels || {};
-      for (const key in pixels) {
-        const [x, y] = key.split(",").map(Number);
-        ctx.fillStyle = pixels[key];
-        ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+    const onlineUserIds = Object.values(presence).map((p) => p.userId).filter(Boolean);
+    allLayers.forEach((layer) => {
+      if (layer.id === currentUser.id) {
+        Object.entries(layer.pixels || {}).forEach(([key, color]) => {
+          const [x, y] = key.split(",").map(Number);
+          ctx.fillStyle = color;
+          ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+        });
+      } else if (!onlineUserIds.includes(layer.id)) {
+        Object.entries(layer.pixels || {}).forEach(([key, color]) => {
+          const [x, y] = key.split(",").map(Number);
+          ctx.fillStyle = color;
+          ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+        });
       }
-    }
-    const myPixels = myLayer.pixels || {};
-    for (const key in myPixels) {
-      const [x, y] = key.split(",").map(Number);
-      ctx.fillStyle = myPixels[key];
-      ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
-    }
-    if (playerImage.current && playerImage.current.complete) {
-      ctx.drawImage(playerImage.current, player.x, player.y, PIXEL_SIZE, PIXEL_SIZE);
-    } else if (playerImage.current) {
-      playerImage.current.onload = () => draw();
-    }
-  }, [allLayers, currentUser, myLayer, player]);
+    });
+    Object.values(livePixels).forEach((userPixels) => {
+      Object.entries(userPixels).forEach(([key, color]) => {
+        const [x, y] = key.split(",").map(Number);
+        ctx.fillStyle = color;
+        ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+      });
+    });
+    Object.values(presence).forEach((p) => {
+      if (p.x !== void 0 && p.y !== void 0) {
+        const img = playerImages.current["default"];
+        if (img && img.complete) {
+          ctx.drawImage(img, p.x, p.y, PIXEL_SIZE, PIXEL_SIZE);
+        } else if (img) {
+          img.onload = draw;
+        }
+      }
+    });
+  }, [allLayers, currentUser, presence, livePixels]);
   const paintPixel = useCallback((gridX, gridY) => {
     const pixelKey = `${gridX},${gridY}`;
-    if (!myLayerRef.current.pixels[pixelKey] || myLayerRef.current.pixels[pixelKey] !== player.color) {
-      pixelUpdateQueue.current[pixelKey] = player.color;
-      setMyLayer((l) => ({
-        ...l,
-        pixels: { ...l.pixels, [pixelKey]: player.color }
+    const myLiveLayer = livePixels[currentUser.id] || {};
+    if (myLiveLayer[pixelKey] !== playerState.color) {
+      pixelUpdateQueue.current[pixelKey] = playerState.color;
+      setLivePixels((prev) => ({
+        ...prev,
+        [currentUser.id]: {
+          ...prev[currentUser.id],
+          [pixelKey]: playerState.color
+        }
       }));
+      room.send({
+        type: "paint",
+        x: gridX,
+        y: gridY,
+        color: playerState.color
+      });
     }
-  }, [player.color]);
+  }, [playerState.color, currentUser, livePixels]);
   useEffect(() => {
     let animationFrameId;
     const gameLoop = () => {
+      if (!currentUser) {
+        animationFrameId = requestAnimationFrame(gameLoop);
+        return;
+      }
       const now = Date.now();
       if (now - lastMoveTime.current > MOVE_INTERVAL) {
         let dx = 0;
         let dy = 0;
         const analogX = analogInput.current.x;
         const analogY = analogInput.current.y;
-        if (Math.abs(analogX) > 0.5 || Math.abs(analogY) > 0.5) {
-          if (Math.abs(analogX) > Math.abs(analogY)) {
-            dx = Math.sign(analogX);
-          } else {
-            dy = Math.sign(analogY);
-          }
+        if (Math.abs(analogX) > 0.1 || Math.abs(analogY) > 0.1) {
+          dx = analogX;
+          dy = analogY;
         } else {
           if (keysPressed.current["w"] || keysPressed.current["arrowup"]) dy = -1;
-          else if (keysPressed.current["s"] || keysPressed.current["arrowdown"]) dy = 1;
-          else if (keysPressed.current["a"] || keysPressed.current["arrowleft"]) dx = -1;
-          else if (keysPressed.current["d"] || keysPressed.current["arrowright"]) dx = 1;
+          if (keysPressed.current["s"] || keysPressed.current["arrowdown"]) dy = 1;
+          if (keysPressed.current["a"] || keysPressed.current["arrowleft"]) dx = -1;
+          if (keysPressed.current["d"] || keysPressed.current["arrowright"]) dx = 1;
         }
         if (dx !== 0 || dy !== 0) {
-          setPlayer((p) => {
+          const moveSpeed = PIXEL_SIZE / 4;
+          const magnitude = Math.sqrt(dx * dx + dy * dy);
+          const normalizedDx = magnitude > 0 ? dx / magnitude * moveSpeed : 0;
+          const normalizedDy = magnitude > 0 ? dy / magnitude * moveSpeed : 0;
+          setPlayerState((p) => {
             const canvas = canvasRef.current;
-            const newX = Math.max(0, Math.min(p.x + dx * PIXEL_SIZE, canvas.width - PIXEL_SIZE));
-            const newY = Math.max(0, Math.min(p.y + dy * PIXEL_SIZE, canvas.height - PIXEL_SIZE));
-            return { ...p, x: newX, y: newY };
+            const newX = Math.max(0, Math.min(p.x + normalizedDx, canvas.width - PIXEL_SIZE));
+            const newY = Math.max(0, Math.min(p.y + normalizedDy, canvas.height - PIXEL_SIZE));
+            const newState = { ...p, x: newX, y: newY };
+            room.updatePresence({
+              ...newState,
+              userId: currentUser.id,
+              username: currentUser.username
+            });
+            const gridX = Math.floor((newX + PIXEL_SIZE / 2) / PIXEL_SIZE);
+            const gridY = Math.floor((newY + PIXEL_SIZE / 2) / PIXEL_SIZE);
+            paintPixel(gridX, gridY);
+            return newState;
           });
           lastMoveTime.current = now;
         }
-      }
-      const gridX = Math.floor((player.x + PIXEL_SIZE / 2) / PIXEL_SIZE);
-      const gridY = Math.floor((player.y + PIXEL_SIZE / 2) / PIXEL_SIZE);
-      const currentCellKey = `${gridX},${gridY}`;
-      if (lastPaintedCell.current !== currentCellKey) {
-        paintPixel(gridX, gridY);
-        lastPaintedCell.current = currentCellKey;
       }
       draw();
       animationFrameId = requestAnimationFrame(gameLoop);
     };
     gameLoop();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [draw, player.x, player.y, paintPixel]);
+  }, [draw, currentUser, paintPixel]);
   useEffect(() => {
     const interval = setInterval(async () => {
       if (currentUser && Object.keys(pixelUpdateQueue.current).length > 0) {
         const pixelsToUpdate = { ...pixelUpdateQueue.current };
         pixelUpdateQueue.current = {};
-        const newPixels = { ...myLayerRef.current.pixels, ...pixelsToUpdate };
+        const myLayerFromDB = allLayers?.find((l) => l.id === currentUser.id);
+        const basePixels = myLayerFromDB?.pixels || {};
+        const newPixels = { ...basePixels, ...pixelsToUpdate };
         await room.collection("user_layers").upsert({
           id: currentUser.id,
           pixels: newPixels,
@@ -211,13 +260,13 @@ function App() {
       }
     }, 1e3);
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentUser, allLayers]);
   const handleAnalogMove = useCallback((vec) => {
     analogInput.current = vec;
   }, []);
   const handleCanvasClick = (e) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !currentUser) return;
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -227,17 +276,24 @@ function App() {
     const newY = gridY * PIXEL_SIZE;
     const boundedX = Math.max(0, Math.min(newX, canvas.width - PIXEL_SIZE));
     const boundedY = Math.max(0, Math.min(newY, canvas.height - PIXEL_SIZE));
-    setPlayer((p) => ({ ...p, x: boundedX, y: boundedY }));
+    const newState = { ...playerState, x: boundedX, y: boundedY };
+    setPlayerState(newState);
+    room.updatePresence({
+      ...newState,
+      userId: currentUser.id,
+      username: currentUser.username
+    });
+    paintPixel(gridX, gridY);
   };
   return /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col items-center justify-center w-full h-full p-4", children: [
     /* @__PURE__ */ jsxDEV("h1", { className: "text-3xl font-bold mb-4", children: "Pixel Layer Land" }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 284,
+      lineNumber: 367,
       columnNumber: 13
     }, this),
     loading && !allLayers && /* @__PURE__ */ jsxDEV("p", { children: "Loading World..." }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 285,
+      lineNumber: 368,
       columnNumber: 39
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -252,7 +308,7 @@ function App() {
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 286,
+        lineNumber: 369,
         columnNumber: 13
       },
       this
@@ -260,45 +316,45 @@ function App() {
     /* @__PURE__ */ jsxDEV("div", { className: "mt-4 text-center", children: [
       /* @__PURE__ */ jsxDEV("p", { children: "Click to move, or use WASD/Arrow keys or the analog stick." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 293,
+        lineNumber: 376,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("p", { children: "As you move, you paint your layer with your color." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 294,
+        lineNumber: 377,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center mt-2", children: [
         "Your current color: ",
-        /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 ml-2 border border-white", style: { backgroundColor: player.color } }, void 0, false, {
+        /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 ml-2 border border-white", style: { backgroundColor: playerState.color } }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 296,
+          lineNumber: 379,
           columnNumber: 41
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 295,
+        lineNumber: 378,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 292,
+      lineNumber: 375,
       columnNumber: 13
     }, this),
     isTouchDevice && /* @__PURE__ */ jsxDEV(AnalogStick, { onMove: handleAnalogMove }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 299,
+      lineNumber: 382,
       columnNumber: 31
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 283,
+    lineNumber: 366,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 305,
+  lineNumber: 388,
   columnNumber: 13
 }));

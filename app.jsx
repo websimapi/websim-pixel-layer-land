@@ -189,16 +189,9 @@ function App() {
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-    const onlineUserIds = Object.values(presence).map((p) => p.userId).filter(Boolean);
     allLayers.forEach((layer) => {
-      if (layer.id === currentUser.id) {
-        Object.entries(layer.pixels || {}).forEach(([key, color]) => {
-          const [x, y] = key.split(",").map(Number);
-          ctx.fillStyle = color;
-          ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
-        });
-      } else if (!onlineUserIds.includes(layer.id)) {
-        Object.entries(layer.pixels || {}).forEach(([key, color]) => {
+      if (layer.pixels) {
+        Object.entries(layer.pixels).forEach(([key, color]) => {
           const [x, y] = key.split(",").map(Number);
           ctx.fillStyle = color;
           ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
@@ -224,6 +217,7 @@ function App() {
     });
   }, [allLayers, currentUser, presence, livePixels]);
   const paintPixel = useCallback((gridX, gridY) => {
+    if (!currentUser) return;
     const pixelKey = `${gridX},${gridY}`;
     const myLiveLayer = livePixels[currentUser.id] || {};
     const underlyingColor = getColorAt(gridX, gridY);
@@ -358,12 +352,12 @@ function App() {
   return /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col items-center justify-center w-full h-full p-4", children: [
     /* @__PURE__ */ jsxDEV("h1", { className: "text-3xl font-bold mb-4", children: "Pixel Layer Land" }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 452,
+      lineNumber: 445,
       columnNumber: 13
     }, this),
     loading && !allLayers && /* @__PURE__ */ jsxDEV("p", { children: "Loading World..." }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 453,
+      lineNumber: 446,
       columnNumber: 39
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -378,7 +372,7 @@ function App() {
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 454,
+        lineNumber: 447,
         columnNumber: 13
       },
       this
@@ -386,12 +380,12 @@ function App() {
     /* @__PURE__ */ jsxDEV("div", { className: "mt-4 text-center", children: [
       /* @__PURE__ */ jsxDEV("p", { children: "Click to move, or use WASD/Arrow keys or the analog stick." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 461,
+        lineNumber: 454,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("p", { children: "As you move, you paint your layer. Paint over other colors to unlock new ones!" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 462,
+        lineNumber: 455,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center mt-2", id: "color-palette", children: unlockedColors.map((color) => /* @__PURE__ */ jsxDEV(
@@ -406,34 +400,34 @@ function App() {
         false,
         {
           fileName: "<stdin>",
-          lineNumber: 465,
+          lineNumber: 458,
           columnNumber: 25
         },
         this
       )) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 463,
+        lineNumber: 456,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 460,
+      lineNumber: 453,
       columnNumber: 13
     }, this),
     isTouchDevice && /* @__PURE__ */ jsxDEV(AnalogStick, { onMove: handleAnalogMove }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 475,
+      lineNumber: 468,
       columnNumber: 31
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 451,
+    lineNumber: 444,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 481,
+  lineNumber: 474,
   columnNumber: 13
 }));

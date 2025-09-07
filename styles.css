@@ -6,9 +6,14 @@ body {
   font-family: 'Courier New', Courier, monospace;
 }
 
-#root {
+#root-container {
   width: 100vw;
   height: 100vh;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -17,7 +22,29 @@ body {
 
 canvas {
   border: 1px solid #444;
-  cursor: pointer;
   touch-action: none;
 }
 
+#analog-stick-base {
+    position: absolute;
+    bottom: 40px;
+    left: 40px;
+    width: 100px;
+    height: 100px;
+    background-color: rgba(128, 128, 128, 0.4);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-user-select: none; /* Safari */
+    -ms-user-select: none; /* IE 10+ */
+    user-select: none;
+}
+
+#analog-stick-knob {
+    width: 50px;
+    height: 50px;
+    background-color: rgba(128, 128, 128, 0.8);
+    border-radius: 50%;
+    transition: transform 0.1s ease-out;
+}

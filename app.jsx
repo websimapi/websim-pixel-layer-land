@@ -215,15 +215,29 @@ function App() {
   const handleAnalogMove = useCallback((vec) => {
     analogInput.current = vec;
   }, []);
+  const handleCanvasClick = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const gridX = Math.floor(mouseX / PIXEL_SIZE);
+    const gridY = Math.floor(mouseY / PIXEL_SIZE);
+    const newX = gridX * PIXEL_SIZE;
+    const newY = gridY * PIXEL_SIZE;
+    const boundedX = Math.max(0, Math.min(newX, canvas.width - PIXEL_SIZE));
+    const boundedY = Math.max(0, Math.min(newY, canvas.height - PIXEL_SIZE));
+    setPlayer((p) => ({ ...p, x: boundedX, y: boundedY }));
+  };
   return /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col items-center justify-center w-full h-full p-4", children: [
     /* @__PURE__ */ jsxDEV("h1", { className: "text-3xl font-bold mb-4", children: "Pixel Layer Land" }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 264,
+      lineNumber: 284,
       columnNumber: 13
     }, this),
     loading && !allLayers && /* @__PURE__ */ jsxDEV("p", { children: "Loading World..." }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 265,
+      lineNumber: 285,
       columnNumber: 39
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -231,59 +245,60 @@ function App() {
       {
         ref: canvasRef,
         width: 800,
-        height: 600
+        height: 600,
+        onClick: handleCanvasClick
       },
       void 0,
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 266,
+        lineNumber: 286,
         columnNumber: 13
       },
       this
     ),
     /* @__PURE__ */ jsxDEV("div", { className: "mt-4 text-center", children: [
-      /* @__PURE__ */ jsxDEV("p", { children: "Use WASD/Arrow keys or the analog stick to move." }, void 0, false, {
+      /* @__PURE__ */ jsxDEV("p", { children: "Click to move, or use WASD/Arrow keys or the analog stick." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 272,
+        lineNumber: 293,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("p", { children: "As you move, you paint your layer with your color." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 273,
+        lineNumber: 294,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center mt-2", children: [
         "Your current color: ",
         /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 ml-2 border border-white", style: { backgroundColor: player.color } }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 275,
+          lineNumber: 296,
           columnNumber: 41
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 274,
+        lineNumber: 295,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 271,
+      lineNumber: 292,
       columnNumber: 13
     }, this),
     isTouchDevice && /* @__PURE__ */ jsxDEV(AnalogStick, { onMove: handleAnalogMove }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 278,
+      lineNumber: 299,
       columnNumber: 31
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 263,
+    lineNumber: 283,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 284,
+  lineNumber: 305,
   columnNumber: 13
 }));

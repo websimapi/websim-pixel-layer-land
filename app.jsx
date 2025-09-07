@@ -97,6 +97,21 @@ function App() {
     room.query("SELECT id, pixels, last_updated, unlocked_colors FROM public.user_layers ORDER BY last_updated ASC")
   );
   useEffect(() => {
+    if (allLayers) {
+      setLivePixels((currentLivePixels) => {
+        const newLivePixels = { ...currentLivePixels };
+        allLayers.forEach((layer) => {
+          const existingUserPixels = newLivePixels[layer.id] || {};
+          newLivePixels[layer.id] = {
+            ...layer.pixels,
+            ...existingUserPixels
+          };
+        });
+        return newLivePixels;
+      });
+    }
+  }, [allLayers]);
+  useEffect(() => {
     const init = async () => {
       const user = await window.websim.getCurrentUser();
       setCurrentUser(user);
@@ -144,7 +159,7 @@ function App() {
       if (myLayer && myLayer.unlocked_colors && myLayer.unlocked_colors.length > 0) {
         setUnlockedColors(myLayer.unlocked_colors);
         setPlayerState((p) => ({ ...p, color: myLayer.unlocked_colors[0] }));
-      } else {
+      } else if (!myLayer) {
         const initialColor = getRandomHexColor();
         setUnlockedColors([initialColor]);
         setPlayerState((p) => ({ ...p, color: initialColor }));
@@ -168,36 +183,32 @@ function App() {
   }, [playerState, currentUser]);
   const getColorAt = useCallback((x, y) => {
     const key = `${x},${y}`;
-    const onlineUserIds = Object.keys(presence).map((clientId) => presence[clientId].userId).filter((id) => id && id !== currentUser.id);
+    const onlineUserIds = Object.keys(presence).map((clientId) => presence[clientId].userId).filter((id) => id && id !== currentUser?.id);
+    if (currentUser && livePixels[currentUser.id] && livePixels[currentUser.id][key]) {
+      return livePixels[currentUser.id][key];
+    }
     for (const userId of onlineUserIds.reverse()) {
       if (livePixels[userId] && livePixels[userId][key]) {
         return livePixels[userId][key];
       }
     }
-    for (let i = allLayers.length - 1; i >= 0; i--) {
-      const layer = allLayers[i];
-      if (layer.id !== currentUser.id && layer.pixels && layer.pixels[key]) {
-        return layer.pixels[key];
+    if (allLayers) {
+      for (let i = allLayers.length - 1; i >= 0; i--) {
+        const layer = allLayers[i];
+        if (layer.id !== currentUser?.id && layer.pixels && layer.pixels[key]) {
+          return layer.pixels[key];
+        }
       }
     }
     return null;
   }, [allLayers, presence, livePixels, currentUser]);
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !allLayers || !currentUser) return;
+    if (!canvas || !currentUser) return;
     const ctx = canvas.getContext("2d");
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-    allLayers.forEach((layer) => {
-      if (layer.pixels) {
-        Object.entries(layer.pixels).forEach(([key, color]) => {
-          const [x, y] = key.split(",").map(Number);
-          ctx.fillStyle = color;
-          ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
-        });
-      }
-    });
     Object.values(livePixels).forEach((userPixels) => {
       Object.entries(userPixels).forEach(([key, color]) => {
         const [x, y] = key.split(",").map(Number);
@@ -215,7 +226,7 @@ function App() {
         }
       }
     });
-  }, [allLayers, currentUser, presence, livePixels]);
+  }, [currentUser, presence, livePixels]);
   const paintPixel = useCallback((gridX, gridY) => {
     if (!currentUser) return;
     const pixelKey = `${gridX},${gridY}`;
@@ -279,8 +290,12 @@ function App() {
           const normalizedDy = magnitude > 0 ? dy / magnitude * moveSpeed : 0;
           setPlayerState((p) => {
             const canvas = canvasRef.current;
+            if (!canvas) return p;
             const newX = Math.max(0, Math.min(p.x + normalizedDx, canvas.width - PIXEL_SIZE));
             const newY = Math.max(0, Math.min(p.y + normalizedDy, canvas.height - PIXEL_SIZE));
+            if (p.x === newX && p.y === newY) {
+              return p;
+            }
             const newState = { ...p, x: newX, y: newY };
             room.updatePresence({
               x: newState.x,
@@ -352,12 +367,12 @@ function App() {
   return /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col items-center justify-center w-full h-full p-4", children: [
     /* @__PURE__ */ jsxDEV("h1", { className: "text-3xl font-bold mb-4", children: "Pixel Layer Land" }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 445,
+      lineNumber: 465,
       columnNumber: 13
     }, this),
     loading && !allLayers && /* @__PURE__ */ jsxDEV("p", { children: "Loading World..." }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 446,
+      lineNumber: 466,
       columnNumber: 39
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -372,7 +387,7 @@ function App() {
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 447,
+        lineNumber: 467,
         columnNumber: 13
       },
       this
@@ -380,12 +395,12 @@ function App() {
     /* @__PURE__ */ jsxDEV("div", { className: "mt-4 text-center", children: [
       /* @__PURE__ */ jsxDEV("p", { children: "Click to move, or use WASD/Arrow keys or the analog stick." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 454,
+        lineNumber: 474,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("p", { children: "As you move, you paint your layer. Paint over other colors to unlock new ones!" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 455,
+        lineNumber: 475,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center mt-2", id: "color-palette", children: unlockedColors.map((color) => /* @__PURE__ */ jsxDEV(
@@ -400,34 +415,34 @@ function App() {
         false,
         {
           fileName: "<stdin>",
-          lineNumber: 458,
+          lineNumber: 478,
           columnNumber: 25
         },
         this
       )) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 456,
+        lineNumber: 476,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 453,
+      lineNumber: 473,
       columnNumber: 13
     }, this),
     isTouchDevice && /* @__PURE__ */ jsxDEV(AnalogStick, { onMove: handleAnalogMove }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 468,
+      lineNumber: 488,
       columnNumber: 31
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 444,
+    lineNumber: 464,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 474,
+  lineNumber: 494,
   columnNumber: 13
 }));

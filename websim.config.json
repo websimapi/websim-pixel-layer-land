@@ -1,0 +1,22 @@
+{
+  "database": {
+    "schema": {
+      "user_layers": {
+        "id": {
+          "type": "text",
+          "description": "User ID, serves as the primary key."
+        },
+        "pixels": {
+          "type": "jsonb",
+          "description": "A JSON object storing pixel data, e.g. {\"x,y\": \"color\"}"
+        },
+        "last_updated": {
+          "type": "timestamptz",
+          "description": "Timestamp of the last update to this layer, used for sorting."
+        }
+      }
+    },
+    "instructions": "Each user has a single record in the 'user_layers' table, keyed by their user ID. The 'pixels' column contains a JSON object mapping 'x,y' coordinates to hex color strings."
+  }
+}
+

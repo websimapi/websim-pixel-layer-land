@@ -6,8 +6,18 @@ const room = new WebsimSocket();
 const PIXEL_SIZE = 16;
 const PLAYER_IMG_SRC = "player.png";
 const MOVE_INTERVAL = 50;
-const getRandomColor = () => {
-  return "hsl(" + 360 * Math.random() + "," + (25 + 70 * Math.random()) + "%," + (85 + 10 * Math.random()) + "%)";
+const getRandomHexColor = () => {
+  return "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
+};
+const mergeColors = (hex1, hex2) => {
+  const c1 = parseInt(hex1.substring(1), 16);
+  const c2 = parseInt(hex2.substring(1), 16);
+  const r1 = c1 >> 16 & 255, g1 = c1 >> 8 & 255, b1 = c1 & 255;
+  const r2 = c2 >> 16 & 255, g2 = c2 >> 8 & 255, b2 = c2 & 255;
+  const r = Math.floor((r1 + r2) / 2);
+  const g = Math.floor((g1 + g2) / 2);
+  const b = Math.floor((b1 + b2) / 2);
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).padStart(6, "0");
 };
 const AnalogStick = ({ onMove }) => {
   const stickRef = useRef(null);
@@ -58,11 +68,11 @@ const AnalogStick = ({ onMove }) => {
   }, [handleMove, isDragging]);
   return /* @__PURE__ */ jsxDEV("div", { id: "analog-stick-base", ref: baseRef, onTouchStart: handleStart, children: /* @__PURE__ */ jsxDEV("div", { id: "analog-stick-knob", ref: stickRef }, void 0, false, {
     fileName: "<stdin>",
-    lineNumber: 80,
+    lineNumber: 91,
     columnNumber: 13
   }) }, void 0, false, {
     fileName: "<stdin>",
-    lineNumber: 79,
+    lineNumber: 90,
     columnNumber: 9
   });
 };
@@ -79,22 +89,18 @@ function App() {
   const [playerState, setPlayerState] = useState({
     x: 10 * PIXEL_SIZE,
     y: 10 * PIXEL_SIZE,
-    color: getRandomColor()
+    color: "#ffffff"
   });
+  const [unlockedColors, setUnlockedColors] = useState([]);
   const [presence, setPresence] = useState({});
   const { data: allLayers, loading } = useQuery(
-    room.query("SELECT id, pixels, last_updated FROM public.user_layers ORDER BY last_updated ASC")
+    room.query("SELECT id, pixels, last_updated, unlocked_colors FROM public.user_layers ORDER BY last_updated ASC")
   );
   useEffect(() => {
     const init = async () => {
       const user = await window.websim.getCurrentUser();
       setCurrentUser(user);
       await room.initialize();
-      room.updatePresence({
-        ...playerState,
-        userId: user.id,
-        username: user.username
-      });
       room.onmessage = (event) => {
         const { data, fromClientId } = event;
         if (data.type === "paint") {
@@ -132,6 +138,50 @@ function App() {
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
+  useEffect(() => {
+    if (currentUser && allLayers) {
+      const myLayer = allLayers.find((l) => l.id === currentUser.id);
+      if (myLayer && myLayer.unlocked_colors && myLayer.unlocked_colors.length > 0) {
+        setUnlockedColors(myLayer.unlocked_colors);
+        setPlayerState((p) => ({ ...p, color: myLayer.unlocked_colors[0] }));
+      } else {
+        const initialColor = getRandomHexColor();
+        setUnlockedColors([initialColor]);
+        setPlayerState((p) => ({ ...p, color: initialColor }));
+        room.collection("user_layers").upsert({
+          id: currentUser.id,
+          pixels: {},
+          unlocked_colors: [initialColor],
+          last_updated: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+    }
+  }, [currentUser, allLayers]);
+  useEffect(() => {
+    if (currentUser && room.clientId) {
+      room.updatePresence({
+        ...playerState,
+        userId: currentUser.id,
+        username: currentUser.username
+      });
+    }
+  }, [playerState, currentUser]);
+  const getColorAt = useCallback((x, y) => {
+    const key = `${x},${y}`;
+    const onlineUserIds = Object.keys(presence).map((clientId) => presence[clientId].userId).filter((id) => id && id !== currentUser.id);
+    for (const userId of onlineUserIds.reverse()) {
+      if (livePixels[userId] && livePixels[userId][key]) {
+        return livePixels[userId][key];
+      }
+    }
+    for (let i = allLayers.length - 1; i >= 0; i--) {
+      const layer = allLayers[i];
+      if (layer.id !== currentUser.id && layer.pixels && layer.pixels[key]) {
+        return layer.pixels[key];
+      }
+    }
+    return null;
+  }, [allLayers, presence, livePixels, currentUser]);
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !allLayers || !currentUser) return;
@@ -176,6 +226,19 @@ function App() {
   const paintPixel = useCallback((gridX, gridY) => {
     const pixelKey = `${gridX},${gridY}`;
     const myLiveLayer = livePixels[currentUser.id] || {};
+    const underlyingColor = getColorAt(gridX, gridY);
+    if (underlyingColor) {
+      const newColor = mergeColors(playerState.color, underlyingColor);
+      if (!unlockedColors.includes(newColor)) {
+        const newUnlocked = [...unlockedColors, newColor];
+        setUnlockedColors(newUnlocked);
+        room.collection("user_layers").upsert({
+          id: currentUser.id,
+          unlocked_colors: newUnlocked,
+          last_updated: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+    }
     if (myLiveLayer[pixelKey] !== playerState.color) {
       pixelUpdateQueue.current[pixelKey] = playerState.color;
       setLivePixels((prev) => ({
@@ -192,7 +255,7 @@ function App() {
         color: playerState.color
       });
     }
-  }, [playerState.color, currentUser, livePixels]);
+  }, [playerState.color, currentUser, livePixels, getColorAt, unlockedColors]);
   useEffect(() => {
     let animationFrameId;
     const gameLoop = () => {
@@ -226,7 +289,9 @@ function App() {
             const newY = Math.max(0, Math.min(p.y + normalizedDy, canvas.height - PIXEL_SIZE));
             const newState = { ...p, x: newX, y: newY };
             room.updatePresence({
-              ...newState,
+              x: newState.x,
+              y: newState.y,
+              color: newState.color,
               userId: currentUser.id,
               username: currentUser.username
             });
@@ -279,21 +344,26 @@ function App() {
     const newState = { ...playerState, x: boundedX, y: boundedY };
     setPlayerState(newState);
     room.updatePresence({
-      ...newState,
+      x: newState.x,
+      y: newState.y,
+      color: newState.color,
       userId: currentUser.id,
       username: currentUser.username
     });
     paintPixel(gridX, gridY);
   };
+  const selectColor = (color) => {
+    setPlayerState((p) => ({ ...p, color }));
+  };
   return /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col items-center justify-center w-full h-full p-4", children: [
     /* @__PURE__ */ jsxDEV("h1", { className: "text-3xl font-bold mb-4", children: "Pixel Layer Land" }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 367,
+      lineNumber: 452,
       columnNumber: 13
     }, this),
     loading && !allLayers && /* @__PURE__ */ jsxDEV("p", { children: "Loading World..." }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 368,
+      lineNumber: 453,
       columnNumber: 39
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -308,7 +378,7 @@ function App() {
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 369,
+        lineNumber: 454,
         columnNumber: 13
       },
       this
@@ -316,45 +386,54 @@ function App() {
     /* @__PURE__ */ jsxDEV("div", { className: "mt-4 text-center", children: [
       /* @__PURE__ */ jsxDEV("p", { children: "Click to move, or use WASD/Arrow keys or the analog stick." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 376,
+        lineNumber: 461,
         columnNumber: 17
       }, this),
-      /* @__PURE__ */ jsxDEV("p", { children: "As you move, you paint your layer with your color." }, void 0, false, {
+      /* @__PURE__ */ jsxDEV("p", { children: "As you move, you paint your layer. Paint over other colors to unlock new ones!" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 377,
+        lineNumber: 462,
         columnNumber: 17
       }, this),
-      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center mt-2", children: [
-        "Your current color: ",
-        /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 ml-2 border border-white", style: { backgroundColor: playerState.color } }, void 0, false, {
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center mt-2", id: "color-palette", children: unlockedColors.map((color) => /* @__PURE__ */ jsxDEV(
+        "div",
+        {
+          className: `color-swatch ${playerState.color === color ? "selected" : ""}`,
+          style: { backgroundColor: color },
+          onClick: () => selectColor(color),
+          title: color
+        },
+        color,
+        false,
+        {
           fileName: "<stdin>",
-          lineNumber: 379,
-          columnNumber: 41
-        }, this)
-      ] }, void 0, true, {
+          lineNumber: 465,
+          columnNumber: 25
+        },
+        this
+      )) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 378,
+        lineNumber: 463,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 375,
+      lineNumber: 460,
       columnNumber: 13
     }, this),
     isTouchDevice && /* @__PURE__ */ jsxDEV(AnalogStick, { onMove: handleAnalogMove }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 382,
+      lineNumber: 475,
       columnNumber: 31
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 366,
+    lineNumber: 451,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 388,
+  lineNumber: 481,
   columnNumber: 13
 }));

@@ -13,10 +13,14 @@
         "last_updated": {
           "type": "timestamptz",
           "description": "Timestamp of the last update to this layer, used for sorting."
+        },
+        "unlocked_colors": {
+          "type": "jsonb",
+          "description": "An array of hex color strings the user has unlocked."
         }
       }
     },
-    "instructions": "Each user has a single record in the 'user_layers' table, keyed by their user ID. The 'pixels' column contains a JSON object mapping 'x,y' coordinates to hex color strings."
+    "instructions": "Each user has a single record in the 'user_layers' table, keyed by their user ID. The 'pixels' column contains a JSON object mapping 'x,y' coordinates to hex color strings. 'unlocked_colors' stores an array of hex colors the user can use."
   }
 }
 
